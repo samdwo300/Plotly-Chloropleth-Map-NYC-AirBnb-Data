@@ -1,0 +1,258 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "a2c776dd-b46d-4984-812f-c9ab223235ab",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# data manipulation\n",
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "\n",
+    "# Chloropleth Map\n",
+    "import plotly.express as px\n",
+    "import json\n",
+    "import math\n",
+    "import plotly.express as px\n",
+    "from area import area\n",
+    "from pandas_geojson import to_geojson\n",
+    "from shapely.geometry import shape, Point\n",
+    "from geopandas import points_from_xy\n",
+    "import geopandas as gpd"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "0c7dab3b-b581-4fbd-b9e6-b6dcea5febb9",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Read the neighborhood population data into a DataFrame and load the GeoJSON data\n",
+    "nyc_boroughs = json.load(open(\"new-york-city-boroughs.geojson\"))\n",
+    "# https://www.kaggle.com/datasets/dgomonov/new-york-city-airbnb-open-data"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "cf6e6643-4b01-452f-b873-36185e53035b",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Read the NYC Airbnb data into a Dataframe\n",
+    "nyc_air_bnb_data = pd.read_csv('AB_NYC_2019.csv')\n",
+    "\n",
+    "# Group the data by NYC borough and calculate the mean listing price and count of listings in each borough\n",
+    "avg_listing_price = nyc_air_bnb_data.groupby('neighbourhood_group').agg({'price':'mean','id':'count'}).reset_index()\n",
+    "\n",
+    "# Rename the columns for clarity\n",
+    "avg_listing_price = avg_listing_price.rename(columns={\"price\": \"Average Listing Price Per Night\", \"id\": \"Total Listings\",\"neighbourhood_group\":\"NYC Borough\"})\n",
+    "\n",
+    "# Round the average price and total listings columns to the nearest integer\n",
+    "avg_listing_price = avg_listing_price.round(0)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "0185e2e4-67e4-4d39-91cd-01251fa3dbd7",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# read the neighborhood population data into a DataFrame and load the GeoJSON data\n",
+    "nyc_boroughs = json.load(open(\"new-york-city-boroughs.geojson\"))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "ed78d5b4-42fa-4ed6-97cc-1d525cc060ac",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Create an empty dictionary called nycmap_id_map\n",
+    "nycmap_id_map = {}\n",
+    "\n",
+    "# Loop over each feature (borough) in the nyc_burrros GeoJSON file\n",
+    "for feature in nyc_boroughs[\"features\"]:\n",
+    "    # Extract the \"cartodb_id\" value from the \"properties\" field of the feature\n",
+    "    # and assign it to a new key called \"id\" in the feature dictionary\n",
+    "    feature[\"id\"] = feature[\"properties\"][\"cartodb_id\"]\n",
+    "    \n",
+    "    # Extract the borough name from the \"properties\" field of the feature\n",
+    "    # and use it as the key in the nycmap_id_map dictionary\n",
+    "    # with the \"cartodb_id\" value as its corresponding value\n",
+    "    nycmap_id_map[feature[\"properties\"][\"name\"]] = feature[\"id\"]\n",
+    "    \n",
+    "# Create a new column called \"id\" in the avg_price_boro dataframe\n",
+    "# apply a lambda function to the \"NYC Borough\" column of the dataframe\n",
+    "# to look up the borough name in the nycmap_id_map dictionary\n",
+    "# and return its corresponding \"cartodb_id\" value\n",
+    "avg_listing_price[\"id\"] = avg_listing_price[\"NYC Borough\"].apply(lambda x: nycmap_id_map[x])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "2026b844-0959-44a8-9562-5d0688229e57",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Call Plotly Express choropleth function to visualize data\n",
+    "fig = px.choropleth_mapbox(\n",
+    "    avg_listing_price, # Dataframe containing the data to be plotted\n",
+    "    geojson=nyc_boroughs, # GeoJSON file with borough boundaries\n",
+    "    locations=\"id\", # Column in dataframe containing the borough IDs\n",
+    "    color=\"Average Listing Price Per Night\", # Column in dataframe containing the data to be visualized\n",
+    "    color_continuous_scale=\"viridis\", # Color scale to use\n",
+    "    mapbox_style=\"carto-positron\", # Map style\n",
+    "    zoom=7.7, # Initial zoom level\n",
+    "    center={\"lat\": 40.7, \"lon\": -73.9}, # Initial map center coordinates\n",
+    "    opacity=0.7, # Opacity of the choropleth map\n",
+    "    hover_name=\"NYC Borough\", # Column in dataframe to use for hover information\n",
+    "    hover_data=[\"Average Listing Price Per Night\", \"Total Listings\"], # Additional columns in dataframe to include in hover information\n",
+    "    title=\"Average Listing Price Per Night by NYC Borough\", # Title of the plot\n",
+    "    labels={\"Average Listing Price Per Night\":\"Average Listing Price Per Night ($)\", \"Total Listings\": \"Total Listings\"} # Add $ sign to legend\n",
+    ")\n",
+    "\n",
+    "# Update the plot to fit the borough boundaries\n",
+    "fig.update_geos(fitbounds=\"locations\", visible=False)\n",
+    "\n",
+    "# Update the plot layout\n",
+    "fig.update_layout(margin={\"r\":100,\"t\":25,\"l\":100,\"b\":100})\n",
+    "\n",
+    "# Show the plot\n",
+    "fig.show()\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "8197957b-fc9b-4a87-876a-3a3576c6c6f0",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Read the NYC neighborhood population data into a DataFrame and load the GeoJSON data\n",
+    "nyc_nhoods = json.load(open(\"NYC Neighborhoods.geojson\"))\n",
+    "\n",
+    "# Group the data by NYC neighborhood and calculate the mean listing price and count of listings in each borough\n",
+    "avg_listing_price_nhood = nyc_air_bnb_data.groupby('neighbourhood').agg({'price':'mean','id':'count'}).reset_index()\n",
+    "\n",
+    "# Round the average price and total listings columns to the nearest integer\n",
+    "avg_listing_price_nhood = avg_listing_price_nhood.round(0)\n",
+    "\n",
+    "# Rename selected columns\n",
+    "avg_listing_price_nhood = avg_listing_price_nhood.rename(columns={\"price\": \"Average Listing Price Per Night\", \n",
+    "                                                  \"id\": \"Total Listings\"})\n",
+    "\n",
+    "\n",
+    "# Merge aggregated data back to NYC neighborhood dataframe \n",
+    "avg_listing_price_nhood = avg_listing_price_nhood.merge(nyc_air_bnb_data, on=\"neighbourhood\",how=\"inner\")\n",
+    "\n",
+    "\n",
+    "# Rename selected columns\n",
+    "avg_listing_price_nhood = avg_listing_price_nhood.rename(columns={\"neighbourhood\":\"NYC Neighborhoood\",\"neighbourhood_group\":\"NYC Borough\"})\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "95103e0f-851d-4a06-b40b-961edd339f1a",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Read the GeoJSON file for the NYC neighborhoods into a GeoDataFrame\n",
+    "data_poly = gpd.read_file(\"NYC Neighborhoods.geojson\")\n",
+    "\n",
+    "# Create a new GeoDataFrame from the merged DataFrame and add a 'geometry' column with Point objects created from longitude and latitude columns\n",
+    "gdf = gpd.GeoDataFrame(\n",
+    "    avg_listing_price_nhood, \n",
+    "    geometry=gpd.points_from_xy(avg_listing_price_nhood.longitude, avg_listing_price_nhood.latitude))\n",
+    "\n",
+    "# Perform a spatial join between the point data (gdf) and the polygon data (data_poly) using the 'within' operation to assign each point to a polygon\n",
+    "joined_gdf = gpd.sjoin(gdf, data_poly, op='within')\n",
+    "\n",
+    "# Create a dictionary mapping neighborhood names to their corresponding GeoJSON id's\n",
+    "nycmap_id_nhood_map = {}\n",
+    "for feature in nycmap_nhoods[\"features\"]:\n",
+    "    feature[\"id\"] = feature[\"properties\"][\"ntacode\"]\n",
+    "    nycmap_id_nhood_map[feature[\"properties\"][\"ntaname\"]] = feature[\"id\"]\n",
+    "    \n",
+    "# Create a new 'id' column in the joined GeoDataFrame by applying the neighborhood id from the dictionary to the 'ntaname' column\n",
+    "joined_gdf[\"id\"] = joined_gdf[\"ntaname\"].apply(lambda x: nycmap_id_nhood_map[x])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "b5bfda78-abec-4ea7-8b3a-9250072e4e80",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# call Plotly Express choropleth function to visualize data\n",
+    "fig = px.choropleth_mapbox(joined_gdf,\n",
+    "                           geojson=nycmap_nhoods,\n",
+    "                           locations=\"id\",\n",
+    "                           color=\"Average Listing Price Per Night\",\n",
+    "                           color_continuous_scale=\"viridis\",\n",
+    "                           mapbox_style=\"carto-positron\",\n",
+    "                           zoom=7.7, \n",
+    "                           center={\"lat\": 40.7, \"lon\": -73.9},\n",
+    "                           opacity=0.7,\n",
+    "                           hover_name=\"NYC Neighborhoood\",\n",
+    "                           hover_data=[\"Average Listing Price Per Night\",\"Total Listings\",\"NYC Borough\"],\n",
+    "                           title=\"Average Listing Price Per Night by NYC Neighborhood\",\n",
+    "                           labels={\"Average Listing Price Per Night\":\"Average Listing Price Per Night ($)\"}\n",
+    "                           )\n",
+    "fig.update_geos(fitbounds=\"locations\", visible=False)\n",
+    "fig.update_layout(margin={\"r\":100,\"t\":25,\"l\":100,\"b\":100})\n",
+    "fig.show()\n",
+    "### References ###\n",
+    "\n",
+    "# https://gis.stackexchange.com/questions/358373/extract-polygon-name-dataframe-if-the-geo-point-is-inside-polygon\n",
+    "# https://github.com/nikhilkumarsingh/choropleth-python-tutorial/blob/master/ChoroplethTutorial.ipynb\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "9160dcb2-e9d2-45b3-8dcc-cf9d2010d02e",
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "e5306ff0-4b16-4e11-8bf9-1413d82db33d",
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3 (ipykernel)",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.9.13"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
